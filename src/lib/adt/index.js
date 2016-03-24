@@ -129,7 +129,8 @@ const MCNK = Chunk({
   sizeMCSH: r.uint32le,
   areaID: r.uint32le,
   wmoCount: r.uint32le,
-  holes: r.uint32le,
+  holes: r.uint16le,
+  unknown: r.uint16le,
 
   textureMaps: new r.Reserved(r.uint16le, 8),
 
@@ -154,7 +155,7 @@ const MCNK = Chunk({
   MCSH: new r.Optional(MCSH, function() {
     return this.flags & 0x01;
   }),
-  MCAL: new MCAL(),
+  MCAL: MCAL,
   MCLQ: new r.Optional(MCLQ, function() {
     return this.offsetMCLQ;
   }),
