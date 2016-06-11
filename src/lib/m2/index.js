@@ -2,7 +2,8 @@ import r from 'restructure';
 
 import AnimationBlock from './animation-block';
 import Nofs from './nofs';
-import { float2, float3, Quat16Float, Vec3Float } from '../types';
+import { Vec3Float } from '../types';
+import { color16, compfixed16, compfixed16array4, float32array2, float32array3 } from '../types';
 
 const Animation = new r.Struct({
   id: r.uint16le,
@@ -30,11 +31,11 @@ const Bone = new r.Struct({
 
   unknowns: new r.Reserved(r.uint16le, 2),
 
-  translation: new AnimationBlock(Vec3Float),
-  rotation: new AnimationBlock(Quat16Float),
-  scaling: new AnimationBlock(Vec3Float),
+  translation: new AnimationBlock(float32array3),
+  rotation: new AnimationBlock(compfixed16array4),
+  scaling: new AnimationBlock(float32array3),
 
-  pivotPoint: Vec3Float,
+  pivotPoint: float32array3,
 
   billboardType: function() {
     // Spherical
@@ -66,8 +67,8 @@ const Bone = new r.Struct({
   }
 });
 
-const RenderFlags = new r.Struct({
-  flags: r.uint16le,
+const Material = new r.Struct({
+  renderFlags: r.uint16le,
   blendingMode: r.uint16le
 });
 
@@ -79,23 +80,28 @@ const Texture = new r.Struct({
 });
 
 const Vertex = new r.Struct({
-  position: float3,
+  position: float32array3,
   boneWeights: new r.Array(r.uint8, 4),
   boneIndices: new r.Array(r.uint8, 4),
-  normal: float3,
-  textureCoords: float2,
-  random: float2
+  normal: float32array3,
+  textureCoords: new r.Array(float32array2, 2)
 });
 
 const Color = new r.Struct({
-  color: new AnimationBlock(Vec3Float),
-  alpha: new AnimationBlock(r.uint16le)
+  color: new AnimationBlock(float32array3),
+  alpha: new AnimationBlock(color16)
 });
 
 const UVAnimation = new r.Struct({
-  translation: new AnimationBlock(Vec3Float),
-  rotation: new AnimationBlock(Quat16Float),
-  scaling: new AnimationBlock(Vec3Float)
+  translation: new AnimationBlock(float32array3),
+  rotation: new AnimationBlock(compfixed16array4),
+  scaling: new AnimationBlock(float32array3),
+
+  animated: function() {
+    return this.translation.animated ||
+      this.rotation.animated ||
+      this.scaling.animated;
+  }
 });
 
 export default new r.Struct({
@@ -119,16 +125,16 @@ export default new r.Struct({
 
   viewCount: r.uint32le,
 
-  colors: new Nofs(Color),
+  vertexColorAnimations: new Nofs(Color),
   textures: new Nofs(Texture),
-  transparencies: new Nofs(new AnimationBlock(r.int16le)),
+  transparencyAnimations: new Nofs(new AnimationBlock(color16)),
   uvAnimations: new Nofs(UVAnimation),
   replacableTextures: new Nofs(),
-  renderFlags: new Nofs(RenderFlags),
-  boneLookups: new Nofs(),
+  materials: new Nofs(Material),
+  boneLookups: new Nofs(r.int16le),
   textureLookups: new Nofs(r.int16le),
-  textureUnits: new Nofs(r.uint16le),
-  transparencyLookups: new Nofs(r.int16le),
+  textureMappings: new Nofs(r.int16le),
+  transparencyAnimationLookups: new Nofs(r.int16le),
   uvAnimationLookups: new Nofs(r.int16le),
 
   minVertexBox: Vec3Float,
@@ -151,12 +157,13 @@ export default new r.Struct({
   ribbonEmitters: new Nofs(),
   particleEmitters: new Nofs(),
 
-  unknown1: new r.Optional(r.uint32le, function() {
-    return this.flags === 8;
+  blendingOverrides: new r.Optional(new Nofs(r.uint16le), function() {
+    return (this.flags & 0x08) !== 0;
   }),
-  unknown2: new r.Optional(r.uint32le, function() {
-    return this.flags === 8;
-  }),
+
+  overrideBlending: function() {
+    return (this.flags & 0x08) !== 0;
+  },
 
   canInstance: function() {
     let instance = true;
@@ -179,17 +186,23 @@ export default new r.Struct({
       }
     });
 
-    this.transparencies.forEach((transparency) => {
+    this.uvAnimations.forEach((uvAnimation) => {
+      if (uvAnimation.animated) {
+        animated = true;
+      }
+    });
+
+    this.transparencyAnimations.forEach((transparency) => {
       if (transparency.animated) {
         if (transparency.keyframeCount > 1) {
           animated = true;
-        } else if (transparency.firstKeyframe.value !== 32767) {
+        } else if (transparency.firstKeyframe.value !== 1.0) {
           animated = true;
         }
       }
     });
 
-    this.colors.forEach((color) => {
+    this.vertexColorAnimations.forEach((color) => {
       if (color.color.animated || color.alpha.animated) {
         animated = true;
       }
